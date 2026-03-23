@@ -89,6 +89,20 @@ def get_meals():
     conn.close()
     return df
 
+def get_calories_burned():
+    """
+    Reads calories burned from a CSV file with columns:
+    date, calories_burned
+    Example:
+    2026-03-23,812
+    """
+    try:
+        df = pd.read_csv("calories_burned.csv")
+        df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame(columns=["date", "calories_burned"])
+
 # Initialize DB
 init_db()
 
@@ -177,6 +191,7 @@ elif page == "📊 Daily Summary Dashboard":
     # Load data
     weight_df = get_weight_entries()
     meals_df = get_meals()
+    cal_burn_df = get_calories_burned()
 
     # -----------------------------
     # Weight for the selected day
@@ -198,9 +213,18 @@ elif page == "📊 Daily Summary Dashboard":
     total_calories = meals_for_day["calories"].sum() if not meals_for_day.empty else 0
 
     # -----------------------------
+    # Calories burned for the day
+    # -----------------------------
+    burned_today = None
+    if not cal_burn_df.empty:
+        row = cal_burn_df[cal_burn_df["date"] == pd.to_datetime(summary_date)]
+        if not row.empty:
+            burned_today = int(row.iloc[0]["calories_burned"])
+
+    # -----------------------------
     # Summary cards
     # -----------------------------
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric("Weight", f"{weight_for_day} kg" if weight_for_day else "No data")
@@ -209,7 +233,14 @@ elif page == "📊 Daily Summary Dashboard":
         st.metric("Calories Eaten", f"{total_calories}")
 
     with col3:
-        st.metric("Calories Burned", "Coming soon")
+        st.metric("Calories Burned", burned_today if burned_today is not None else "No data")
+
+    with col4:
+        if burned_today is not None:
+            net = total_calories - burned_today
+            st.metric("Net Calories", net)
+        else:
+            st.metric("Net Calories", "No data")
 
     st.markdown("---")
 
