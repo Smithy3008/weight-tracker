@@ -83,6 +83,17 @@ def add_meal(meal_name, calories, meal_time, entry_date, notes):
     conn.commit()
     conn.close()
 
+def update_meal(meal_id, meal_name, calories, meal_time, entry_date, notes):
+    conn = sqlite3.connect("health_tracker.db")
+    c = conn.cursor()
+    c.execute("""
+        UPDATE meals
+        SET meal_name = ?, calories = ?, meal_time = ?, entry_date = ?, notes = ?
+        WHERE id = ?
+    """, (meal_name, calories, meal_time, entry_date, notes, meal_id))
+    conn.commit()
+    conn.close()
+
 def get_meals():
     conn = sqlite3.connect("health_tracker.db")
     df = pd.read_sql_query("SELECT * FROM meals ORDER BY entry_date DESC", conn)
@@ -90,12 +101,6 @@ def get_meals():
     return df
 
 def get_calories_burned():
-    """
-    Reads calories burned from a CSV file with columns:
-    date, calories_burned
-    Example:
-    2026-03-23,812
-    """
     try:
         df = pd.read_csv("calories_burned.csv")
         df["date"] = pd.to_datetime(df["date"])
@@ -155,7 +160,7 @@ if page == "🏋️ Weight Tracker":
 elif page == "🍽️ Meals Log":
     st.subheader("Log a Meal")
 
-    meal_name = st.text_input("Meal Name (e.g., Breakfast, Chicken Salad)")
+    meal_name = st.text_input("Meal Name")
     calories = st.number_input("Calories", min_value=0, step=10)
     meal_time = st.time_input("Meal Time")
     entry_date = st.date_input("Date", value=date.today())
@@ -179,51 +184,105 @@ elif page == "🍽️ Meals Log":
     else:
         st.info("No meals logged yet.")
 
+    # -----------------------------
+    # EDIT MEAL
+    # -----------------------------
+    st.subheader("Edit an Existing Meal")
+
+    if not meals_df.empty:
+        meal_to_edit = st.selectbox(
+            "Select a meal to edit",
+            meals_df["id"],
+            format_func=lambda x: f"{meals_df.loc[meals_df['id']==x, 'meal_name'].values[0]} ({meals_df.loc[meals_df['id']==x, 'entry_date'].values[0]})"
+        )
+
+        selected = meals_df[meals_df["id"] == meal_to_edit].iloc[0]
+
+        new_name = st.text_input("Meal Name (edit)", selected["meal_name"])
+        new_calories = st.number_input("Calories (edit)", min_value=0, step=10, value=int(selected["calories"]))
+        new_time = st.time_input("Meal Time (edit)", datetime.strptime(selected["meal_time"], "%H:%M").time())
+        new_date = st.date_input("Date (edit)", datetime.strptime(selected["entry_date"], "%Y-%m-%d").date())
+        new_notes = st.text_area("Notes (edit)", selected["notes"] if selected["notes"] else "")
+
+        if st.button("Save Changes", use_container_width=True):
+            update_meal(
+                meal_to_edit,
+                new_name,
+                new_calories,
+                new_time.strftime("%H:%M"),
+                new_date.isoformat(),
+                new_notes
+            )
+            st.success("Meal updated successfully!")
+
+    # -----------------------------
+    # COPY MEAL (OPTION B)
+    # -----------------------------
+    st.subheader("Copy a Meal From Another Day")
+
+    if not meals_df.empty:
+        copy_date = st.date_input("Select a date to copy from", value=date.today())
+        meals_on_date = meals_df[meals_df["entry_date"] == copy_date.isoformat()]
+
+        if not meals_on_date.empty:
+            meal_to_copy = st.selectbox(
+                "Select a meal to copy",
+                meals_on_date["id"],
+                format_func=lambda x: meals_on_date.loc[meals_on_date["id"] == x, "meal_name"].values[0]
+            )
+
+            selected_copy = meals_on_date[meals_on_date["id"] == meal_to_copy].iloc[0]
+
+            copy_name = st.text_input("Meal Name (copy)", selected_copy["meal_name"])
+            copy_calories = st.number_input("Calories (copy)", min_value=0, step=10, value=int(selected_copy["calories"]))
+            copy_time = st.time_input("Meal Time (copy)", datetime.strptime(selected_copy["meal_time"], "%H:%M").time())
+            copy_notes = st.text_area("Notes (copy)", selected_copy["notes"] if selected_copy["notes"] else "")
+
+            # Default date = TODAY (Option A)
+            copy_date_final = date.today()
+
+            if st.button("Save Copied Meal", use_container_width=True):
+                add_meal(
+                    copy_name,
+                    copy_calories,
+                    copy_time.strftime("%H:%M"),
+                    copy_date_final.isoformat(),
+                    copy_notes
+                )
+                st.success("Meal copied to today!")
+        else:
+            st.info("No meals found for that date.")
+
 # -----------------------------
 # DAILY SUMMARY DASHBOARD
 # -----------------------------
 elif page == "📊 Daily Summary Dashboard":
     st.subheader("Daily Summary")
 
-    # Select date
     summary_date = st.date_input("Select a date", value=date.today())
 
-    # Load data
     weight_df = get_weight_entries()
     meals_df = get_meals()
     cal_burn_df = get_calories_burned()
 
-    # -----------------------------
-    # Weight for the selected day
-    # -----------------------------
     weight_for_day = None
-
     if not weight_df.empty:
         weight_df["entry_date"] = pd.to_datetime(weight_df["entry_date"])
         past_weights = weight_df[weight_df["entry_date"] <= pd.to_datetime(summary_date)]
         if not past_weights.empty:
             weight_for_day = past_weights.iloc[-1]["weight"]
 
-    # -----------------------------
-    # Meals + calories for the day
-    # -----------------------------
     meals_for_day = meals_df[meals_df["entry_date"] == summary_date.isoformat()] \
                     if not meals_df.empty else pd.DataFrame()
 
     total_calories = meals_for_day["calories"].sum() if not meals_for_day.empty else 0
 
-    # -----------------------------
-    # Calories burned for the day
-    # -----------------------------
     burned_today = None
     if not cal_burn_df.empty:
         row = cal_burn_df[cal_burn_df["date"] == pd.to_datetime(summary_date)]
         if not row.empty:
             burned_today = int(row.iloc[0]["calories_burned"])
 
-    # -----------------------------
-    # Summary cards
-    # -----------------------------
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -244,9 +303,6 @@ elif page == "📊 Daily Summary Dashboard":
 
     st.markdown("---")
 
-    # -----------------------------
-    # Meals list
-    # -----------------------------
     st.subheader("Meals for the Day")
 
     if not meals_for_day.empty:
@@ -256,9 +312,6 @@ elif page == "📊 Daily Summary Dashboard":
 
     st.markdown("---")
 
-    # -----------------------------
-    # 7-day weight trend
-    # -----------------------------
     st.subheader("Last 7 Days Weight Trend")
 
     if not weight_df.empty:
@@ -273,9 +326,6 @@ elif page == "📊 Daily Summary Dashboard":
 
     st.markdown("---")
 
-    # -----------------------------
-    # DOWNLOAD DATABASE BUTTON
-    # -----------------------------
     st.subheader("Backup Your Data")
 
     with open("health_tracker.db", "rb") as f:
