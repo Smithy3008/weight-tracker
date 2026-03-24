@@ -157,7 +157,7 @@ elif page == "🍽️ Meals Log":
 
     meal_name = st.text_input("Meal Name (e.g., Breakfast, Chicken Salad)")
     calories = st.number_input("Calories", min_value=0, step=10)
-    meal_time = st.time_input("Meal Time", value=datetime.now().time())
+    meal_time = st.time_input("Meal Time")
     entry_date = st.date_input("Date", value=date.today())
     notes = st.text_area("Notes (optional)")
 
