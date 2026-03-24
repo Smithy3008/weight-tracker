@@ -270,3 +270,18 @@ elif page == "📊 Daily Summary Dashboard":
             st.info("Not enough data for a 7-day trend.")
     else:
         st.info("No weight data available.")
+
+    st.markdown("---")
+
+    # -----------------------------
+    # DOWNLOAD DATABASE BUTTON
+    # -----------------------------
+    st.subheader("Backup Your Data")
+
+    with open("health_tracker.db", "rb") as f:
+        st.download_button(
+            label="Download Database",
+            data=f,
+            file_name="health_tracker.db",
+            mime="application/octet-stream"
+        )
